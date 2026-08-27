@@ -9,7 +9,6 @@ async function getDB() {
   if (db) return db;
 
   client = new MongoClient(process.env.MONGODB_URI);
-
   await client.connect();
 
   db = client.db("moonai");
@@ -17,8 +16,14 @@ async function getDB() {
   return db;
 }
 
-module.exports = async (req, res) => {
+function setSessionCookie(res, token) {
+  res.setHeader(
+    "Set-Cookie",
+    `moonai_token=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`
+  );
+}
 
+module.exports = async (req, res) => {
   if (req.method !== "POST") {
     return res.status(405).json({
       error: "Método no permitido"
@@ -26,102 +31,121 @@ module.exports = async (req, res) => {
   }
 
   try {
+    const {
+      username,
+      email,
+      password,
+      displayName
+    } = req.body || {};
 
-    const { username, email, password } = req.body;
-
-    // Validaciones
-
-    if (!username || !email || !password) {
+    if (
+      typeof username !== "string" ||
+      typeof email !== "string" ||
+      typeof password !== "string"
+    ) {
       return res.status(400).json({
-        error: "Completá todos los campos 🌙"
+        error: "Completá todos los campos"
       });
     }
 
-    if (username.length < 3) {
+    const cleanUsername = username.trim();
+    const cleanEmail = email.trim().toLowerCase();
+
+    const cleanDisplayName =
+      typeof displayName === "string" &&
+      displayName.trim()
+        ? displayName.trim()
+        : cleanUsername;
+
+    if (
+      !cleanUsername ||
+      !cleanEmail ||
+      !password
+    ) {
       return res.status(400).json({
-        error: "El usuario debe tener al menos 3 caracteres"
+        error: "Completá todos los campos"
       });
     }
 
-    if (password.length < 8) {
+    if (password.length < 6) {
       return res.status(400).json({
-        error: "La contraseña debe tener al menos 8 caracteres"
+        error: "La contraseña debe tener al menos 6 caracteres"
       });
     }
 
     const database = await getDB();
-
     const users = database.collection("users");
-
-    // Comprobar si ya existe
 
     const existingUser = await users.findOne({
       $or: [
-        { username: username.toLowerCase() },
-        { email: email.toLowerCase() }
+        { email: cleanEmail },
+        { username: cleanUsername }
       ]
     });
 
     if (existingUser) {
+      if (existingUser.email === cleanEmail) {
+        return res.status(409).json({
+          error: "Ese correo ya está registrado"
+        });
+      }
+
       return res.status(409).json({
-        error: "El usuario o email ya está registrado"
+        error: "Ese nombre de usuario ya está ocupado"
       });
     }
 
-    // Hashear contraseña
+    const passwordHash =
+      await bcrypt.hash(password, 12);
 
-    const passwordHash = await bcrypt.hash(
-      password,
-      12
-    );
-
-    // Crear usuario
+    const now = new Date();
 
     const user = {
-      username: username.toLowerCase(),
-      email: email.toLowerCase(),
-      password: passwordHash,
-      createdAt: new Date()
+      username: cleanUsername,
+      email: cleanEmail,
+      displayName: cleanDisplayName,
+      passwordHash,
+      avatar: null,
+      createdAt: now,
+      updatedAt: now
     };
 
-    const result = await users.insertOne(user);
+    const result =
+      await users.insertOne(user);
 
-    // Crear sesión
+    const token =
+      jwt.sign(
+        {
+          userId: result.insertedId.toString()
+        },
+        process.env.JWT_SECRET,
+        {
+          expiresIn: "30d"
+        }
+      );
 
-    const token = jwt.sign(
-      {
-        userId: result.insertedId.toString(),
-        username: user.username
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: "30d"
-      }
-    );
-
-    // Cookie
-
-    res.setHeader(
-      "Set-Cookie",
-      `moonai_token=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`
-    );
+    setSessionCookie(res, token);
 
     return res.status(201).json({
       ok: true,
+
       user: {
-        id: result.insertedId,
+        id: result.insertedId.toString(),
         username: user.username,
-        email: user.email
+        email: user.email,
+        displayName: user.displayName,
+        avatar: null
       }
     });
 
   } catch (error) {
-
-    console.error("Register error:", error);
+    console.error(
+      "Register error:",
+      error
+    );
 
     return res.status(500).json({
-      error: "Error creando la cuenta 🌙"
+      error: "No se pudo crear la cuenta 🌙"
     });
-
   }
 };

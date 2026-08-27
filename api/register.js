@@ -1,4 +1,7 @@
-const { MongoClient } = require("mongodb");
+const {
+  MongoClient
+} = require("mongodb");
+
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
@@ -8,7 +11,10 @@ let db;
 async function getDB() {
   if (db) return db;
 
-  client = new MongoClient(process.env.MONGODB_URI);
+  client = new MongoClient(
+    process.env.MONGODB_URI
+  );
+
   await client.connect();
 
   db = client.db("moonai");
@@ -19,11 +25,51 @@ async function getDB() {
 function setSessionCookie(res, token) {
   res.setHeader(
     "Set-Cookie",
-    `moonai_token=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`
+    `moonai_token=${token}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=2592000`
   );
 }
 
 module.exports = async (req, res) => {
+
+  // =========================
+  // CORS
+  // =========================
+
+  const origin = req.headers.origin;
+
+  if (
+    origin === "http://localhost:8787" ||
+    origin === "http://127.0.0.1:8787"
+  ) {
+    res.setHeader(
+      "Access-Control-Allow-Origin",
+      origin
+    );
+  }
+
+  res.setHeader(
+    "Access-Control-Allow-Credentials",
+    "true"
+  );
+
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type"
+  );
+
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "POST, OPTIONS"
+  );
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
+  // =========================
+  // MÉTODO
+  // =========================
+
   if (req.method !== "POST") {
     return res.status(405).json({
       error: "Método no permitido"
@@ -31,6 +77,11 @@ module.exports = async (req, res) => {
   }
 
   try {
+
+    // =========================
+    // DATOS
+    // =========================
+
     const {
       username,
       email,
@@ -48,8 +99,11 @@ module.exports = async (req, res) => {
       });
     }
 
-    const cleanUsername = username.trim();
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanUsername =
+      username.trim();
+
+    const cleanEmail =
+      email.trim().toLowerCase();
 
     const cleanDisplayName =
       typeof displayName === "string" &&
@@ -67,85 +121,162 @@ module.exports = async (req, res) => {
       });
     }
 
+    // =========================
+    // VALIDACIONES
+    // =========================
+
     if (password.length < 6) {
       return res.status(400).json({
-        error: "La contraseña debe tener al menos 6 caracteres"
+        error:
+          "La contraseña debe tener al menos 6 caracteres"
       });
     }
 
-    const database = await getDB();
-    const users = database.collection("users");
+    // =========================
+    // MONGODB
+    // =========================
 
-    const existingUser = await users.findOne({
-      $or: [
-        { email: cleanEmail },
-        { username: cleanUsername }
-      ]
-    });
+    const database =
+      await getDB();
+
+    const users =
+      database.collection("users");
+
+    const existingUser =
+      await users.findOne({
+        $or: [
+          {
+            email: cleanEmail
+          },
+          {
+            username: cleanUsername
+          }
+        ]
+      });
 
     if (existingUser) {
-      if (existingUser.email === cleanEmail) {
+
+      if (
+        existingUser.email ===
+        cleanEmail
+      ) {
         return res.status(409).json({
-          error: "Ese correo ya está registrado"
+          error:
+            "Ese correo ya está registrado"
         });
       }
 
       return res.status(409).json({
-        error: "Ese nombre de usuario ya está ocupado"
+        error:
+          "Ese nombre de usuario ya está ocupado"
       });
     }
 
-    const passwordHash =
-      await bcrypt.hash(password, 12);
+    // =========================
+    // CONTRASEÑA
+    // =========================
 
-    const now = new Date();
+    const passwordHash =
+      await bcrypt.hash(
+        password,
+        12
+      );
+
+    // =========================
+    // USUARIO
+    // =========================
+
+    const now =
+      new Date();
 
     const user = {
-      username: cleanUsername,
-      email: cleanEmail,
-      displayName: cleanDisplayName,
+      username:
+        cleanUsername,
+
+      email:
+        cleanEmail,
+
+      displayName:
+        cleanDisplayName,
+
       passwordHash,
-      avatar: null,
-      createdAt: now,
-      updatedAt: now
+
+      avatar:
+        null,
+
+      createdAt:
+        now,
+
+      updatedAt:
+        now
     };
 
     const result =
-      await users.insertOne(user);
+      await users.insertOne(
+        user
+      );
+
+    // =========================
+    // JWT
+    // =========================
 
     const token =
       jwt.sign(
         {
-          userId: result.insertedId.toString()
+          userId:
+            result.insertedId.toString()
         },
         process.env.JWT_SECRET,
         {
-          expiresIn: "30d"
+          expiresIn:
+            "30d"
         }
       );
 
-    setSessionCookie(res, token);
+    // =========================
+    // SESIÓN
+    // =========================
+
+    setSessionCookie(
+      res,
+      token
+    );
+
+    // =========================
+    // RESPUESTA
+    // =========================
 
     return res.status(201).json({
       ok: true,
 
       user: {
-        id: result.insertedId.toString(),
-        username: user.username,
-        email: user.email,
-        displayName: user.displayName,
-        avatar: null
+        id:
+          result.insertedId.toString(),
+
+        username:
+          user.username,
+
+        email:
+          user.email,
+
+        displayName:
+          user.displayName,
+
+        avatar:
+          null
       }
     });
 
   } catch (error) {
+
     console.error(
       "Register error:",
       error
     );
 
     return res.status(500).json({
-      error: "No se pudo crear la cuenta 🌙"
+      error:
+        "No se pudo crear la cuenta 🌙"
     });
   }
 };

@@ -21,7 +21,10 @@ if (
 origin === "http://localhost:8787" ||
 origin === "http://127.0.0.1:8787"
 ) {
-res.setHeader("Access-Control-Allow-Origin", origin);
+res.setHeader(
+"Access-Control-Allow-Origin",
+origin
+);
 }
 
 res.setHeader(
@@ -54,7 +57,10 @@ error: "Método no permitido"
 }
 
 try {
-const { email, password } = req.body || {};
+const {
+email,
+password
+} = req.body || {};
 
 if (
   typeof email !== "string" ||
@@ -65,7 +71,8 @@ if (
   });
 }
 
-const cleanEmail = email.trim().toLowerCase();
+const cleanEmail =
+  email.trim().toLowerCase();
 
 if (!cleanEmail || !password) {
   return res.status(400).json({
@@ -86,10 +93,11 @@ if (!user) {
   });
 }
 
-const validPassword = await bcrypt.compare(
-  password,
-  user.passwordHash
-);
+const validPassword =
+  await bcrypt.compare(
+    password,
+    user.passwordHash
+  );
 
 if (!validPassword) {
   return res.status(401).json({
@@ -107,15 +115,32 @@ const token = jwt.sign(
   }
 );
 
+const origin =
+  req.headers.origin || "";
+
+const isLocal =
+  origin === "http://localhost:8787" ||
+  origin === "http://127.0.0.1:8787";
+
+let cookie =
+  "moonai_token=" +
+  token +
+  "; Path=/; HttpOnly; Max-Age=2592000; ";
+
+if (isLocal) {
+  cookie += "SameSite=Lax";
+} else {
+  cookie += "Secure; SameSite=None";
+}
+
 res.setHeader(
   "Set-Cookie",
-  "moonai_token=" +
-    token +
-    "; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=2592000"
+  cookie
 );
 
 return res.status(200).json({
   ok: true,
+
   user: {
     id: user._id.toString(),
     username: user.username,
@@ -123,15 +148,20 @@ return res.status(200).json({
     displayName:
       user.displayName ||
       user.username,
-    avatar: user.avatar || null
+    avatar:
+      user.avatar || null
   }
 });
 
 } catch (error) {
-console.error("Login error:", error);
+console.error(
+"Login error:",
+error
+);
 
 return res.status(500).json({
-  error: "Error iniciando sesión 🌙"
+  error:
+    "Error iniciando sesión 🌙"
 });
 
 }

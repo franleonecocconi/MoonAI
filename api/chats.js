@@ -112,6 +112,10 @@ module.exports = async (req, res) => {
     const userId =
       getUserId(req);
 
+      console.log(
+"COOKIE RECIBIDA:",
+req.headers.cookie || "NINGUNA"
+);
     if (!userId) {
 
       return res

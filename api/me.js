@@ -3,51 +3,36 @@ MongoClient,
 ObjectId
 } = require("mongodb");
 
-const jwt =
-require("jsonwebtoken");
+const jwt = require("jsonwebtoken");
 
 let client;
 let db;
 
-// =====================================================
-// MONGODB
-// =====================================================
-
 async function getDB() {
+if (db) {
+return db;
+}
 
-if (db) return db;
-
-client =
-new MongoClient(
+client = new MongoClient(
 process.env.MONGODB_URI
 );
 
 await client.connect();
 
-db =
-client.db("moonai");
+db = client.db("moonai");
 
 return db;
 }
 
-// =====================================================
-// CORS
-// =====================================================
-
-function setCors(res, origin) {
-
+function cors(res, origin) {
 if (
 origin === "http://localhost:8787" ||
 origin === "http://127.0.0.1:8787"
 ) {
-
-```
 res.setHeader(
-  "Access-Control-Allow-Origin",
-  origin
+"Access-Control-Allow-Origin",
+origin
 );
-```
-
 }
 
 res.setHeader(
@@ -64,311 +49,124 @@ res.setHeader(
 "Access-Control-Allow-Methods",
 "GET, OPTIONS"
 );
-
 }
 
-// =====================================================
-// AVATAR
-// =====================================================
+module.exports = async function(req, res) {
 
-function getInitials(username) {
-
-const words =
-username
-.trim()
-.split(/\s+/)
-.filter(Boolean);
-
-if (words.length >= 2) {
-
-```
-return (
-  words[0][0] +
-  words[1][0]
-).toUpperCase();
-```
-
-}
-
-return words[0][0].toUpperCase();
-}
-
-function generateBackground(username) {
-
-let hash = 0;
-
-for (
-let i = 0;
-i < username.length;
-i++
-) {
-
-```
-hash =
-  username.charCodeAt(i) +
-  ((hash << 5) - hash);
-```
-
-}
-
-const backgrounds = [
-"#5865F2",
-"#7C3AED",
-"#2563EB",
-"#0891B2",
-"#059669",
-"#D97706",
-"#DB2777",
-"#9333EA"
-];
-
-return backgrounds[
-Math.abs(hash) %
-backgrounds.length
-];
-}
-
-// =====================================================
-// API
-// =====================================================
-
-module.exports =
-async (req, res) => {
-
-```
-// =========================
-// CORS
-// =========================
-
-setCors(
-  res,
-  req.headers.origin
+cors(
+res,
+req.headers.origin
 );
 
-
-// =========================
-// OPTIONS
-// =========================
-
-if (
-  req.method === "OPTIONS"
-) {
-
-  return res
-    .status(200)
-    .end();
-
+if (req.method === "OPTIONS") {
+return res.status(200).end();
 }
 
-
-// =========================
-// MÉTODO
-// =========================
-
-if (
-  req.method !== "GET"
-) {
-
-  return res
-    .status(405)
-    .json({
-      error:
-        "Método no permitido"
-    });
-
+if (req.method !== "GET") {
+return res.status(405).json({
+error: "Método no permitido"
+});
 }
-
 
 try {
 
-  // =========================
-  // COOKIE
-  // =========================
+```
+const cookies =
+  req.headers.cookie || "";
 
-  const cookies =
-    req.headers.cookie || "";
-
-  const tokenCookie =
-    cookies
-      .split(";")
-      .map(
-        cookie =>
-          cookie.trim()
+const cookie =
+  cookies
+    .split(";")
+    .map(x => x.trim())
+    .find(x =>
+      x.startsWith(
+        "moonai_token="
       )
-      .find(
-        cookie =>
-          cookie.startsWith(
-            "moonai_token="
-          )
-      );
-
-
-  // =========================
-  // SIN SESIÓN
-  // =========================
-
-  if (!tokenCookie) {
-
-    return res
-      .status(200)
-      .json({
-
-        authenticated:
-          false,
-
-        user:
-          null
-
-      });
-
-  }
-
-
-  const token =
-    tokenCookie.substring(
-      "moonai_token=".length
     );
 
+if (!cookie) {
+  return res.status(200).json({
+    authenticated: false,
+    user: null
+  });
+}
 
-  // =========================
-  // JWT
-  // =========================
+const token =
+  cookie.substring(
+    "moonai_token=".length
+  );
 
-  const decoded =
-    jwt.verify(
-      token,
-      process.env.JWT_SECRET
-    );
+const decoded =
+  jwt.verify(
+    token,
+    process.env.JWT_SECRET
+  );
 
+if (!decoded.userId) {
+  return res.status(200).json({
+    authenticated: false,
+    user: null
+  });
+}
 
-  // =========================
-  // MONGODB
-  // =========================
+const database =
+  await getDB();
 
-  const database =
-    await getDB();
+const users =
+  database.collection("users");
 
-  const users =
-    database.collection(
-      "users"
-    );
+const user =
+  await users.findOne({
+    _id: new ObjectId(
+      decoded.userId
+    )
+  });
 
+if (!user) {
+  return res.status(200).json({
+    authenticated: false,
+    user: null
+  });
+}
 
-  const user =
-    await users.findOne({
+return res.status(200).json({
 
-      _id:
-        new ObjectId(
-          decoded.userId
-        )
+  authenticated: true,
 
-    });
+  user: {
+    id:
+      user._id.toString(),
 
+    username:
+      user.username,
 
-  // =========================
-  // USUARIO NO EXISTE
-  // =========================
+    email:
+      user.email,
 
-  if (!user) {
-
-    return res
-      .status(200)
-      .json({
-
-        authenticated:
-          false,
-
-        user:
-          null
-
-      });
-
-  }
-
-
-  // =========================
-  // AVATAR
-  // =========================
-
-  let avatar =
-    user.avatar;
-
-
-  if (!avatar) {
-
-    const name =
+    displayName:
       user.displayName ||
-      user.username;
+      user.username,
 
-    avatar = {
-
-      type:
-        "generated",
-
-      initials:
-        getInitials(name),
-
-      background:
-        generateBackground(name)
-
-    };
-
+    avatar:
+      user.avatar || null
   }
 
-
-  // =========================
-  // RESPUESTA
-  // =========================
-
-  return res
-    .status(200)
-    .json({
-
-      authenticated:
-        true,
-
-      user: {
-
-        id:
-          user._id.toString(),
-
-        username:
-          user.username,
-
-        email:
-          user.email,
-
-        displayName:
-          user.displayName ||
-          user.username,
-
-        avatar
-
-      }
-
-    });
-
+});
+```
 
 } catch (error) {
 
-  console.error(
-    "Session error:",
-    error
-  );
+```
+console.error(
+  "ME ERROR:",
+  error
+);
 
-  return res
-    .status(200)
-    .json({
-
-      authenticated:
-        false,
-
-      user:
-        null
-
-    });
-
-}
+return res.status(500).json({
+  error:
+    "Error interno en /api/me"
+});
 ```
 
+}
 };

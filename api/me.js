@@ -1,159 +1,374 @@
-const { MongoClient } = require("mongodb");
-const jwt = require("jsonwebtoken");
+const {
+MongoClient,
+ObjectId
+} = require("mongodb");
+
+const jwt =
+require("jsonwebtoken");
 
 let client;
 let db;
 
+// =====================================================
+// MONGODB
+// =====================================================
+
 async function getDB() {
-  if (db) return db;
 
-  client = new MongoClient(process.env.MONGODB_URI);
-  await client.connect();
+if (db) return db;
 
-  db = client.db("moonai");
+client =
+new MongoClient(
+process.env.MONGODB_URI
+);
 
-  return db;
+await client.connect();
+
+db =
+client.db("moonai");
+
+return db;
 }
+
+// =====================================================
+// CORS
+// =====================================================
+
+function setCors(res, origin) {
+
+if (
+origin === "http://localhost:8787" ||
+origin === "http://127.0.0.1:8787"
+) {
+
+```
+res.setHeader(
+  "Access-Control-Allow-Origin",
+  origin
+);
+```
+
+}
+
+res.setHeader(
+"Access-Control-Allow-Credentials",
+"true"
+);
+
+res.setHeader(
+"Access-Control-Allow-Headers",
+"Content-Type"
+);
+
+res.setHeader(
+"Access-Control-Allow-Methods",
+"GET, OPTIONS"
+);
+
+}
+
+// =====================================================
+// AVATAR
+// =====================================================
 
 function getInitials(username) {
 
-  const words = username
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
+const words =
+username
+.trim()
+.split(/\s+/)
+.filter(Boolean);
 
-  if (words.length >= 2) {
-    return (
-      words[0][0] +
-      words[1][0]
-    ).toUpperCase();
-  }
+if (words.length >= 2) {
 
-  return words[0][0].toUpperCase();
+```
+return (
+  words[0][0] +
+  words[1][0]
+).toUpperCase();
+```
+
+}
+
+return words[0][0].toUpperCase();
 }
 
 function generateBackground(username) {
 
-  let hash = 0;
+let hash = 0;
 
-  for (let i = 0; i < username.length; i++) {
-    hash =
-      username.charCodeAt(i) +
-      ((hash << 5) - hash);
-  }
+for (
+let i = 0;
+i < username.length;
+i++
+) {
 
-  const backgrounds = [
-    "#5865F2",
-    "#7C3AED",
-    "#2563EB",
-    "#0891B2",
-    "#059669",
-    "#D97706",
-    "#DB2777",
-    "#9333EA"
-  ];
+```
+hash =
+  username.charCodeAt(i) +
+  ((hash << 5) - hash);
+```
 
-  return backgrounds[
-    Math.abs(hash) % backgrounds.length
-  ];
 }
 
-module.exports = async (req, res) => {
+const backgrounds = [
+"#5865F2",
+"#7C3AED",
+"#2563EB",
+"#0891B2",
+"#059669",
+"#D97706",
+"#DB2777",
+"#9333EA"
+];
 
-  if (req.method !== "GET") {
-    return res.status(405).json({
-      error: "Método no permitido"
+return backgrounds[
+Math.abs(hash) %
+backgrounds.length
+];
+}
+
+// =====================================================
+// API
+// =====================================================
+
+module.exports =
+async (req, res) => {
+
+```
+// =========================
+// CORS
+// =========================
+
+setCors(
+  res,
+  req.headers.origin
+);
+
+
+// =========================
+// OPTIONS
+// =========================
+
+if (
+  req.method === "OPTIONS"
+) {
+
+  return res
+    .status(200)
+    .end();
+
+}
+
+
+// =========================
+// MÉTODO
+// =========================
+
+if (
+  req.method !== "GET"
+) {
+
+  return res
+    .status(405)
+    .json({
+      error:
+        "Método no permitido"
     });
-  }
 
-  try {
+}
 
-    const cookies = req.headers.cookie || "";
 
-    const tokenCookie = cookies
+try {
+
+  // =========================
+  // COOKIE
+  // =========================
+
+  const cookies =
+    req.headers.cookie || "";
+
+  const tokenCookie =
+    cookies
       .split(";")
-      .map(cookie => cookie.trim())
-      .find(cookie =>
-        cookie.startsWith("moonai_token=")
+      .map(
+        cookie =>
+          cookie.trim()
+      )
+      .find(
+        cookie =>
+          cookie.startsWith(
+            "moonai_token="
+          )
       );
 
-    if (!tokenCookie) {
-      return res.status(200).json({
-        authenticated: false,
-        user: null
-      });
-    }
 
-    const token = tokenCookie.substring(
+  // =========================
+  // SIN SESIÓN
+  // =========================
+
+  if (!tokenCookie) {
+
+    return res
+      .status(200)
+      .json({
+
+        authenticated:
+          false,
+
+        user:
+          null
+
+      });
+
+  }
+
+
+  const token =
+    tokenCookie.substring(
       "moonai_token=".length
     );
 
-    const decoded = jwt.verify(
+
+  // =========================
+  // JWT
+  // =========================
+
+  const decoded =
+    jwt.verify(
       token,
       process.env.JWT_SECRET
     );
 
-    const database = await getDB();
 
-    const users = database.collection("users");
+  // =========================
+  // MONGODB
+  // =========================
 
-    const user = await users.findOne({
-      _id: new (require("mongodb").ObjectId)(
-        decoded.userId
-      )
+  const database =
+    await getDB();
+
+  const users =
+    database.collection(
+      "users"
+    );
+
+
+  const user =
+    await users.findOne({
+
+      _id:
+        new ObjectId(
+          decoded.userId
+        )
+
     });
 
-    if (!user) {
-      return res.status(200).json({
-        authenticated: false,
-        user: null
+
+  // =========================
+  // USUARIO NO EXISTE
+  // =========================
+
+  if (!user) {
+
+    return res
+      .status(200)
+      .json({
+
+        authenticated:
+          false,
+
+        user:
+          null
+
       });
-    }
 
-    let avatar = user.avatar;
+  }
 
-    // Avatar automático
 
-    if (!avatar) {
+  // =========================
+  // AVATAR
+  // =========================
 
-      const initials = getInitials(
-        user.displayName || user.username
-      );
+  let avatar =
+    user.avatar;
 
-      avatar = {
-        type: "generated",
-        initials,
-        background: generateBackground(
-          user.displayName || user.username
-        )
-      };
 
-    }
+  if (!avatar) {
 
-    return res.status(200).json({
+    const name =
+      user.displayName ||
+      user.username;
 
-      authenticated: true,
+    avatar = {
+
+      type:
+        "generated",
+
+      initials:
+        getInitials(name),
+
+      background:
+        generateBackground(name)
+
+    };
+
+  }
+
+
+  // =========================
+  // RESPUESTA
+  // =========================
+
+  return res
+    .status(200)
+    .json({
+
+      authenticated:
+        true,
 
       user: {
-        id: user._id.toString(),
-        username: user.username,
-        email: user.email,
+
+        id:
+          user._id.toString(),
+
+        username:
+          user.username,
+
+        email:
+          user.email,
+
         displayName:
-          user.displayName || user.username,
+          user.displayName ||
+          user.username,
+
         avatar
+
       }
 
     });
 
-  } catch (error) {
 
-    console.error("Avatar/session error:", error);
+} catch (error) {
 
-    return res.status(200).json({
-      authenticated: false,
-      user: null
+  console.error(
+    "Session error:",
+    error
+  );
+
+  return res
+    .status(200)
+    .json({
+
+      authenticated:
+        false,
+
+      user:
+        null
+
     });
 
-  }
+}
+```
 
 };

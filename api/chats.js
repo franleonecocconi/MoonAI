@@ -3,38 +3,37 @@ const {
   ObjectId
 } = require("mongodb");
 
-const jwt = require("jsonwebtoken");
+const jwt =
+  require("jsonwebtoken");
 
 let client;
 let db;
 
 async function getDB() {
-
   if (db) return db;
 
-  client = new MongoClient(
-    process.env.MONGODB_URI
-  );
+  client =
+    new MongoClient(
+      process.env.MONGODB_URI
+    );
 
   await client.connect();
 
-  db = client.db("moonai");
+  db =
+    client.db("moonai");
 
   return db;
 }
 
 function setCors(res, origin) {
-
   if (
     origin === "http://localhost:8787" ||
     origin === "http://127.0.0.1:8787"
   ) {
-
     res.setHeader(
       "Access-Control-Allow-Origin",
       origin
     );
-
   }
 
   res.setHeader(
@@ -49,12 +48,11 @@ function setCors(res, origin) {
 
   res.setHeader(
     "Access-Control-Allow-Methods",
-    "GET, POST, DELETE, OPTIONS"
+    "GET, POST, PATCH, DELETE, OPTIONS"
   );
 }
 
 function getUserId(req) {
-
   const cookies =
     req.headers.cookie || "";
 
@@ -63,7 +61,9 @@ function getUserId(req) {
       .split(";")
       .map(c => c.trim())
       .find(c =>
-        c.startsWith("moonai_token=")
+        c.startsWith(
+          "moonai_token="
+        )
       );
 
   if (!cookie) {
@@ -76,7 +76,6 @@ function getUserId(req) {
     );
 
   try {
-
     const decoded =
       jwt.verify(
         token,
@@ -84,88 +83,144 @@ function getUserId(req) {
       );
 
     return decoded.userId;
-
   } catch {
-
     return null;
-
   }
 }
 
-module.exports = async (req, res) => {
+module.exports =
+  async (req, res) => {
 
-  setCors(
-    res,
-    req.headers.origin
-  );
+    setCors(
+      res,
+      req.headers.origin
+    );
 
-  if (req.method === "OPTIONS") {
-
-    return res
-      .status(200)
-      .end();
-
-  }
-
-  try {
-
-    const userId =
-      getUserId(req);
-
-      console.log(
-"COOKIE RECIBIDA:",
-req.headers.cookie || "NINGUNA"
-);
-    if (!userId) {
-
-      return res
-        .status(401)
-        .json({
-          error:
-            "Necesitás una cuenta para guardar el historial 🌙"
-        });
-
-    }
-
-    if (!ObjectId.isValid(userId)) {
-
-      return res
-        .status(401)
-        .json({
-          error:
-            "Sesión inválida"
-        });
-
-    }
-
-    const database =
-      await getDB();
-
-    const chats =
-      database.collection("chats");
-
-    if (req.method === "GET") {
-
-      const list =
-        await chats
-          .find({
-            userId:
-              new ObjectId(userId)
-          })
-          .sort({
-            updatedAt: -1
-          })
-          .toArray();
-
+    if (
+      req.method === "OPTIONS"
+    ) {
       return res
         .status(200)
-        .json({
+        .end();
+    }
 
-          chats:
-            list.map(chat => ({
+    try {
+      const userId =
+        getUserId(req);
 
+      if (!userId) {
+        return res
+          .status(401)
+          .json({
+            error:
+              "Necesitás una cuenta para guardar el historial 🌙"
+          });
+      }
+
+      if (
+        !ObjectId.isValid(userId)
+      ) {
+        return res
+          .status(401)
+          .json({
+            error:
+              "Sesión inválida"
+          });
+      }
+
+      const database =
+        await getDB();
+
+      const chats =
+        database.collection(
+          "chats"
+        );
+
+      const userObjectId =
+        new ObjectId(userId);
+
+      // =========================
+      // GET
+      // =========================
+
+      if (
+        req.method === "GET"
+      ) {
+        const list =
+          await chats
+            .find({
+              userId:
+                userObjectId
+            })
+            .sort({
+              updatedAt: -1
+            })
+            .toArray();
+
+        return res
+          .status(200)
+          .json({
+            chats:
+              list.map(chat => ({
+                id:
+                  chat._id.toString(),
+
+                title:
+                  chat.title,
+
+                createdAt:
+                  chat.createdAt,
+
+                updatedAt:
+                  chat.updatedAt
+              }))
+          });
+      }
+
+      // =========================
+      // POST
+      // =========================
+
+      if (
+        req.method === "POST"
+      ) {
+        const title =
+          req.body &&
+          typeof req.body.title === "string"
+            ? req.body.title.trim()
+            : "Nuevo chat";
+
+        const now =
+          new Date();
+
+        const chat = {
+          userId:
+            userObjectId,
+
+          title:
+            title.substring(0, 80) ||
+            "Nuevo chat",
+
+          createdAt:
+            now,
+
+          updatedAt:
+            now
+        };
+
+        const result =
+          await chats.insertOne(
+            chat
+          );
+
+        return res
+          .status(201)
+          .json({
+            ok: true,
+
+            chat: {
               id:
-                chat._id.toString(),
+                result.insertedId.toString(),
 
               title:
                 chat.title,
@@ -175,160 +230,176 @@ req.headers.cookie || "NINGUNA"
 
               updatedAt:
                 chat.updatedAt
+            }
+          });
+      }
 
-            }))
+      // =========================
+      // PATCH — RENOMBRAR
+      // =========================
 
-        });
+      if (
+        req.method === "PATCH"
+      ) {
+        const id =
+          req.query &&
+          req.query.id;
 
-    }
+        const title =
+          req.body &&
+          typeof req.body.title === "string"
+            ? req.body.title.trim()
+            : "";
 
-    if (req.method === "POST") {
+        if (
+          !id ||
+          !ObjectId.isValid(id)
+        ) {
+          return res
+            .status(400)
+            .json({
+              error:
+                "ID de chat inválido"
+            });
+        }
 
-      const title =
-        req.body &&
-        typeof req.body.title === "string"
-          ? req.body.title.trim()
-          : "Nuevo chat";
+        if (!title) {
+          return res
+            .status(400)
+            .json({
+              error:
+                "El nombre no puede estar vacío"
+            });
+        }
 
-      const now =
-        new Date();
+        const finalTitle =
+          title.substring(
+            0,
+            80
+          );
 
-      const chat = {
+        const result =
+          await chats.updateOne(
+            {
+              _id:
+                new ObjectId(id),
 
-        userId:
-          new ObjectId(userId),
+              userId:
+                userObjectId
+            },
+            {
+              $set: {
+                title:
+                  finalTitle,
 
-        title:
-          title.substring(0, 80) ||
-          "Nuevo chat",
+                updatedAt:
+                  new Date()
+              }
+            }
+          );
 
-        createdAt:
-          now,
+        if (
+          result.matchedCount === 0
+        ) {
+          return res
+            .status(404)
+            .json({
+              error:
+                "Chat no encontrado"
+            });
+        }
 
-        updatedAt:
-          now
-
-      };
-
-      const result =
-        await chats.insertOne(
-          chat
-        );
-
-      return res
-        .status(201)
-        .json({
-
-          ok: true,
-
-          chat: {
-
-            id:
-              result.insertedId.toString(),
-
+        return res
+          .status(200)
+          .json({
+            ok: true,
             title:
-              chat.title,
-
-            createdAt:
-              chat.createdAt,
-
-            updatedAt:
-              chat.updatedAt
-
-          }
-
-        });
-
-    }
-
-    if (req.method === "DELETE") {
-
-      const id =
-        req.query &&
-        req.query.id;
-
-      if (
-        !id ||
-        !ObjectId.isValid(id)
-      ) {
-
-        return res
-          .status(400)
-          .json({
-            error:
-              "ID de chat inválido"
+              finalTitle
           });
-
       }
 
-      const result =
-        await chats.deleteOne({
+      // =========================
+      // DELETE
+      // =========================
 
-          _id:
-            new ObjectId(id),
+      if (
+        req.method === "DELETE"
+      ) {
+        const id =
+          req.query &&
+          req.query.id;
 
+        if (
+          !id ||
+          !ObjectId.isValid(id)
+        ) {
+          return res
+            .status(400)
+            .json({
+              error:
+                "ID de chat inválido"
+            });
+        }
+
+        const chatId =
+          new ObjectId(id);
+
+        const result =
+          await chats.deleteOne({
+            _id:
+              chatId,
+
+            userId:
+              userObjectId
+          });
+
+        if (
+          result.deletedCount === 0
+        ) {
+          return res
+            .status(404)
+            .json({
+              error:
+                "Chat no encontrado"
+            });
+        }
+
+        const messages =
+          database.collection(
+            "messages"
+          );
+
+        await messages.deleteMany({
+          chatId,
           userId:
-            new ObjectId(userId)
-
+            userObjectId
         });
 
-      if (
-        result.deletedCount === 0
-      ) {
-
         return res
-          .status(404)
+          .status(200)
           .json({
-            error:
-              "Chat no encontrado"
+            ok: true
           });
-
       }
-
-      const messages =
-        database.collection(
-          "messages"
-        );
-
-      await messages.deleteMany({
-
-        chatId:
-          new ObjectId(id),
-
-        userId:
-          new ObjectId(userId)
-
-      });
 
       return res
-        .status(200)
+        .status(405)
         .json({
-          ok: true
+          error:
+            "Método no permitido"
         });
 
+    } catch (error) {
+      console.error(
+        "Chats error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          error:
+            "Error con los chats 🌙"
+        });
     }
-
-    return res
-      .status(405)
-      .json({
-        error:
-          "Método no permitido"
-      });
-
-  } catch (error) {
-
-    console.error(
-      "Chats error:",
-      error
-    );
-
-    return res
-      .status(500)
-      .json({
-        error:
-          "Error con los chats 🌙"
-      });
-
-  }
-
-};
+  };

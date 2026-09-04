@@ -22,12 +22,109 @@ async function getDB() {
   return db;
 }
 
+
+// =====================================================
+// AVATAR
+// =====================================================
+
+function generateAvatar(username) {
+
+  const words =
+    username
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+  let initials = "";
+
+  if (words.length >= 2) {
+
+    initials =
+      words[0].charAt(0) +
+      words[words.length - 1].charAt(0);
+
+  } else {
+
+    const name =
+      words[0] || "U";
+
+    if (name.length >= 2) {
+
+      initials =
+        name.charAt(0) +
+        name.charAt(
+          name.length - 1
+        );
+
+    } else {
+
+      initials =
+        name.charAt(0);
+
+    }
+  }
+
+  initials =
+    initials.toUpperCase();
+
+  const backgrounds = [
+    "#5865F2",
+    "#8B5CF6",
+    "#EC4899",
+    "#EF4444",
+    "#F97316",
+    "#EAB308",
+    "#22C55E",
+    "#14B8A6",
+    "#06B6D4",
+    "#3B82F6"
+  ];
+
+  let hash = 0;
+
+  for (
+    let i = 0;
+    i < username.length;
+    i++
+  ) {
+
+    hash =
+      username.charCodeAt(i) +
+      ((hash << 5) - hash);
+
+  }
+
+  const background =
+    backgrounds[
+      Math.abs(hash) %
+      backgrounds.length
+    ];
+
+  return {
+    type: "generated",
+    initials,
+    background
+  };
+}
+
+
+// =====================================================
+// COOKIE
+// =====================================================
+
 function setSessionCookie(res, token) {
+
   res.setHeader(
     "Set-Cookie",
     `moonai_token=${token}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=2592000`
   );
+
 }
+
+
+// =====================================================
+// API
+// =====================================================
 
 module.exports = async (req, res) => {
 
@@ -35,16 +132,19 @@ module.exports = async (req, res) => {
   // CORS
   // =========================
 
-  const origin = req.headers.origin;
+  const origin =
+    req.headers.origin;
 
   if (
     origin === "http://localhost:8787" ||
     origin === "http://127.0.0.1:8787"
   ) {
+
     res.setHeader(
       "Access-Control-Allow-Origin",
       origin
     );
+
   }
 
   res.setHeader(
@@ -63,18 +163,29 @@ module.exports = async (req, res) => {
   );
 
   if (req.method === "OPTIONS") {
-    return res.status(200).end();
+
+    return res
+      .status(200)
+      .end();
+
   }
+
 
   // =========================
   // MÉTODO
   // =========================
 
   if (req.method !== "POST") {
-    return res.status(405).json({
-      error: "Método no permitido"
-    });
+
+    return res
+      .status(405)
+      .json({
+        error:
+          "Método no permitido"
+      });
+
   }
+
 
   try {
 
@@ -89,21 +200,30 @@ module.exports = async (req, res) => {
       displayName
     } = req.body || {};
 
+
     if (
       typeof username !== "string" ||
       typeof email !== "string" ||
       typeof password !== "string"
     ) {
-      return res.status(400).json({
-        error: "Completá todos los campos"
-      });
+
+      return res
+        .status(400)
+        .json({
+          error:
+            "Completá todos los campos"
+        });
+
     }
+
 
     const cleanUsername =
       username.trim();
 
     const cleanEmail =
-      email.trim().toLowerCase();
+      email
+        .trim()
+        .toLowerCase();
 
     const cleanDisplayName =
       typeof displayName === "string" &&
@@ -111,26 +231,38 @@ module.exports = async (req, res) => {
         ? displayName.trim()
         : cleanUsername;
 
+
     if (
       !cleanUsername ||
       !cleanEmail ||
       !password
     ) {
-      return res.status(400).json({
-        error: "Completá todos los campos"
-      });
+
+      return res
+        .status(400)
+        .json({
+          error:
+            "Completá todos los campos"
+        });
+
     }
 
+
     // =========================
-    // VALIDACIONES
+    // VALIDACIÓN CONTRASEÑA
     // =========================
 
     if (password.length < 6) {
-      return res.status(400).json({
-        error:
-          "La contraseña debe tener al menos 6 caracteres"
-      });
+
+      return res
+        .status(400)
+        .json({
+          error:
+            "La contraseña debe tener al menos 6 caracteres"
+        });
+
     }
+
 
     // =========================
     // MONGODB
@@ -140,19 +272,25 @@ module.exports = async (req, res) => {
       await getDB();
 
     const users =
-      database.collection("users");
+      database.collection(
+        "users"
+      );
+
 
     const existingUser =
       await users.findOne({
         $or: [
           {
-            email: cleanEmail
+            email:
+              cleanEmail
           },
           {
-            username: cleanUsername
+            username:
+              cleanUsername
           }
         ]
       });
+
 
     if (existingUser) {
 
@@ -160,17 +298,26 @@ module.exports = async (req, res) => {
         existingUser.email ===
         cleanEmail
       ) {
-        return res.status(409).json({
-          error:
-            "Ese correo ya está registrado"
-        });
+
+        return res
+          .status(409)
+          .json({
+            error:
+              "Ese correo ya está registrado"
+          });
+
       }
 
-      return res.status(409).json({
-        error:
-          "Ese nombre de usuario ya está ocupado"
-      });
+
+      return res
+        .status(409)
+        .json({
+          error:
+            "Ese nombre de usuario ya está ocupado"
+        });
+
     }
+
 
     // =========================
     // CONTRASEÑA
@@ -182,6 +329,17 @@ module.exports = async (req, res) => {
         12
       );
 
+
+    // =========================
+    // AVATAR
+    // =========================
+
+    const avatar =
+      generateAvatar(
+        cleanDisplayName
+      );
+
+
     // =========================
     // USUARIO
     // =========================
@@ -189,7 +347,9 @@ module.exports = async (req, res) => {
     const now =
       new Date();
 
+
     const user = {
+
       username:
         cleanUsername,
 
@@ -201,20 +361,22 @@ module.exports = async (req, res) => {
 
       passwordHash,
 
-      avatar:
-        null,
+      avatar,
 
       createdAt:
         now,
 
       updatedAt:
         now
+
     };
+
 
     const result =
       await users.insertOne(
         user
       );
+
 
     // =========================
     // JWT
@@ -233,6 +395,7 @@ module.exports = async (req, res) => {
         }
       );
 
+
     // =========================
     // SESIÓN
     // =========================
@@ -242,30 +405,38 @@ module.exports = async (req, res) => {
       token
     );
 
+
     // =========================
     // RESPUESTA
     // =========================
 
-    return res.status(201).json({
-      ok: true,
+    return res
+      .status(201)
+      .json({
 
-      user: {
-        id:
-          result.insertedId.toString(),
+        ok: true,
 
-        username:
-          user.username,
+        user: {
 
-        email:
-          user.email,
+          id:
+            result.insertedId.toString(),
 
-        displayName:
-          user.displayName,
+          username:
+            user.username,
 
-        avatar:
-          null
-      }
-    });
+          email:
+            user.email,
+
+          displayName:
+            user.displayName,
+
+          avatar:
+            user.avatar
+
+        }
+
+      });
+
 
   } catch (error) {
 
@@ -274,9 +445,13 @@ module.exports = async (req, res) => {
       error
     );
 
-    return res.status(500).json({
-      error:
-        "No se pudo crear la cuenta 🌙"
-    });
+    return res
+      .status(500)
+      .json({
+        error:
+          "No se pudo crear la cuenta 🌙"
+      });
+
   }
+
 };
